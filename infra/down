@@ -1,0 +1,96 @@
+#!/bin/bash
+
+region=eu-north-1 # stockholm
+tag_name_prefix=hunt
+
+# delete ec2 instance
+ec2_id=$(aws ec2 describe-instances \
+            --region $region \
+            --filters Name=tag:Name,Values=$tag_name_prefix-ec2 Name=instance-state-name,Values=pending,running | \
+            grep -oP '(?<="InstanceId": ")[^"]*')
+
+if [ "$ec2_id" != "" ]; then
+
+    term_res=$(aws ec2 terminate-instances \
+                --instance-ids "$ec2_id" \
+                --query "TerminatingInstances[].CurrentState.Name" \
+                --output text)
+
+    echo "$term_res"
+
+    if [ "$term_res" != "shutting-down" ]; then
+        echo "Error in deleing ec2 instance"
+        exit 1
+    fi
+    echo "ec2 instance deleted."
+
+else
+    echo "ec2 instance already not exist"
+fi
+
+# ----------------------------------------------------------------------------
+
+# create key pair
+key_pair_name=$(aws ec2 describe-key-pairs --region $region --filters Name=key-name,Values=$tag_name_prefix-cli-key | grep -oP '(?<="KeyName": ")[^"]*')
+if [ "$key_pair_name" != "" ]; then
+
+    delete_res=$(aws ec2 delete-key-pair \
+                    --key-name "$key_pair_name" \
+                    --query "Return" \
+                    --output text)
+
+    echo "$delete_res"
+
+    if [ "$delete_res" != "True" ]; then
+        echo "Error in deleting the key pair"
+        exit 1
+    fi
+
+    echo "Key pair deleted."
+
+else
+    echo "Key pair already not exist"
+fi
+
+# delete key
+rm -rf ./infra/$tag_name_prefix-cli-key.pem
+
+# ----------------------------------------------------------------------------
+
+# ensure ec2 instance is terminated
+while :
+do
+    output=$(aws ec2 describe-instances \
+            --region $region \
+            --instance-ids $ec2_id \
+            --query "Reservations[].Instances[].[State.Name]" \
+            --output text)
+
+    echo "$output"
+    if [[ "${output}" == terminated* ]] ; then 
+        echo ec2 instance terminated successfully
+        break
+    fi
+
+    sleep 10;
+done
+
+# delete security group
+sg_id=$(aws ec2 describe-security-groups --region $region --filters Name=tag:Name,Values=$tag_name_prefix-sg | grep -oP '(?<="GroupId": ")[^"]*')
+if [ "$sg_id" != "" ]; then
+    
+    aws ec2 delete-security-group --group-id $sg_id
+
+    sg_id=$(aws ec2 describe-security-groups --region $region --filters Name=tag:Name,Values=$tag_name_prefix-sg | grep -oP '(?<="GroupId": ")[^"]*')
+    echo "$sg_id"
+
+    if [ "$sg_id" != "" ]; then
+        echo "Error in deleting the security group"
+        exit 1
+    fi
+
+    echo "security group deleted."
+
+else
+    echo "security group already not exist"
+fi

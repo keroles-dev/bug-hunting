@@ -1,0 +1,285 @@
+#!/bin/bash
+
+region=eu-north-1 # stockholm
+tag_name_prefix=hunt
+ec2_ami_id=ami-05bb943edc7d12d2f
+sg_ssh_rule_cidr=$(curl https://checkip.amazonaws.com)/32
+
+# create vpc 10.0.0.0/16
+
+check_vpc=$(aws ec2 describe-vpcs --region $region --filters Name=tag:Name,Values=$tag_name_prefix-vpc | grep -oP '(?<="VpcId": ")[^"]*')
+if [ "$check_vpc" == "" ]; then
+
+    vpc_result=$(aws ec2 create-vpc \
+        --cidr-block 10.0.0.0/16 --region $region \
+        --tag-specification ResourceType=vpc,Tags="[{Key=Name,Value=$tag_name_prefix-vpc}]" \
+        --output json)
+    echo $vpc_result
+
+    vpc_id=$(echo $vpc_result | grep -oP '(?<="VpcId": ")[^"]*')
+    echo $vpc_id
+
+    if [ "$vpc_id" == "" ]; then
+        echo "Error in creating the vpc"
+        exit 1
+    fi
+
+    echo "VPC created."
+
+else
+    echo "VPC already exist"
+    vpc_id=$check_vpc
+    echo $vpc_id
+fi
+
+
+# ----------------------------------------------------------------------------
+
+# create public subnet 10.0.1.0/24 in first az
+
+create_subnet()
+{
+    # $1 subnet number, $2 az, $3 public or private
+    check_subnet=$(aws ec2 describe-subnets --region $region --filters Name=tag:Name,Values=sub-$3-$1-$tag_name_prefix | grep -oP '(?<="SubnetId": ")[^"]*')
+    if [ "$check_subnet" == "" ]; then
+        echo "subnet $1 will be created"
+
+        subnet_result=$(aws ec2 create-subnet \
+            --vpc-id $vpc_id \
+            --availability-zone $region$2 \
+            --cidr-block 10.0.$1.0/24 \
+            --tag-specifications ResourceType=subnet,Tags="[{Key=Name,Value=sub-$3-$1-$tag_name_prefix}]" \
+            --output json)
+            
+        echo $subnet_result
+
+        subnet_id=$(echo $subnet_result | grep -oP '(?<="SubnetId": ")[^"]*')
+        echo $subnet_id
+
+        if [ "$subnet_id" == "" ]; then
+            echo "Error in create subnet $1"
+            exit 1
+        fi
+        echo "subnet $1 created."
+
+        if [ "$3" == "public" ]; then
+            pub_ip_auto_assign=$(aws ec2 modify-subnet-attribute --subnet-id $subnet_id --map-public-ip-on-launch)
+            echo $pub_ip_auto_assign
+            echo "subnet $1 assign public ip done."
+        fi
+    else
+        echo "subnet $1 already exist"
+        subnet_id=$check_subnet
+        echo $subnet_id
+    fi
+
+}
+
+create_subnet 1 a public
+sub1_id=$subnet_id
+
+# ----------------------------------------------------------------------------
+
+# create internet gateway
+check_igw=$(aws ec2 describe-internet-gateways  --filters Name=tag:Name,Values=$tag_name_prefix-igw | grep -oP '(?<="InternetGatewayId": ")[^"]*')
+if [ "$check_igw" == "" ]; then
+    echo "internet gateway will be created"
+
+    igw_id=$(aws ec2 create-internet-gateway --region $region \
+        --tag-specifications ResourceType=internet-gateway,Tags="[{Key=Name,Value=$tag_name_prefix-igw}]" --output json | grep -oP '(?<="InternetGatewayId": ")[^"]*')
+
+    if [ "$igw_id" == "" ]; then
+        echo "Error in create internet gateway"
+        exit 1
+    fi
+    echo "internet gateway created."
+    
+else
+    echo "internet gateway already exist"
+    igw_id=$check_igw
+fi
+
+echo $igw_id
+
+# Attach the internet gateway to vpc (no output)
+
+igw_attach=$(aws ec2 describe-internet-gateways --internet-gateway-ids $igw_id | grep -oP '(?<="VpcId": ")[^"]*')
+if [ "$igw_attach" != "$vpc_id" ]; then
+    attach_result=$(aws ec2 attach-internet-gateway --internet-gateway-id $igw_id --vpc-id $vpc_id)
+    if [ "$attach_result" == "" ]; then
+        echo "internet gateway attached to the vpc"
+    else 
+        echo "Internet gateway AlreadyAssociated"
+    fi
+else
+    echo "Internet gateway already attached to this vpc"
+fi
+# ----------------------------------------------------------------------------
+
+# create public rout table
+check_rtb=$(aws ec2 describe-route-tables --filters Name=tag:Name,Values=public-$tag_name_prefix-rtb | grep -oP '(?<="RouteTableId": ")[^"]*' | uniq)
+
+if [ "$check_rtb" == "" ]; then
+    echo "public route table will be created"
+    public_rtb_id=$(aws ec2 create-route-table --vpc-id $vpc_id --tag-specifications ResourceType=route-table,Tags="[{Key=Name,Value=public-$tag_name_prefix-rtb}]"  --output json | grep -oP '(?<="RouteTableId": ")[^"]*'  | uniq)
+    if [ "$public_rtb_id" == "" ]; then
+        echo "Error in create public route table"
+        exit 1
+    fi
+    echo "public route table created."
+
+    # create public route 
+    route_result=$(aws ec2 create-route --route-table-id $public_rtb_id \
+        --destination-cidr-block 0.0.0.0/0 --gateway-id $igw_id | grep -oP '(?<="Return": ")[^"]*')
+    echo $route_result
+    if [ "$route_result" != "true" ]; then
+        echo "public route creation failed"
+        exit 1
+    fi
+    echo "public route created"
+
+else 
+    echo "public route table already exist"
+    public_rtb_id=$check_rtb
+fi
+
+echo $public_rtb_id
+
+# associate public route table to the public subnets
+aws ec2 associate-route-table --route-table-id $public_rtb_id --subnet-id $sub1_id
+
+# ----------------------------------------------------------------------------
+
+# create key pair
+check_key_pair=$(aws ec2 describe-key-pairs --region $region --filters Name=key-name,Values=$tag_name_prefix-cli-key | grep -oP '(?<="KeyName": ")[^"]*')
+if [ "$check_key_pair" == "" ]; then
+
+    aws ec2 create-key-pair \
+    --region $region \
+    --key-name $tag_name_prefix-cli-key \
+    --tag-specifications "ResourceType=key-pair,Tags=[{Key=Name,Value=$tag_name_prefix-cli-key}]" \
+    --query 'KeyMaterial' \
+    --output text > ./infra/$tag_name_prefix-cli-key.pem
+    
+    key_pair_name=$(aws ec2 describe-key-pairs --region $region --filters Name=key-name,Values=$tag_name_prefix-cli-key | grep -oP '(?<="KeyName": ")[^"]*')
+    echo $key_pair_name
+
+    if [ "$key_pair_name" == "" ]; then
+        echo "Error in creating the key pair"
+        exit 1
+    fi
+
+    echo "Key pair created."
+
+else
+    echo "Key pair already exist"
+    key_pair_name=$check_key_pair
+    echo $key_pair_name
+fi
+
+# change key permission
+chmod 400 ./infra/$tag_name_prefix-cli-key.pem
+
+# ----------------------------------------------------------------------------
+
+#create security group
+check_sg=$(aws ec2 describe-security-groups --region $region --filters Name=tag:Name,Values=$tag_name_prefix-sg | grep -oP '(?<="GroupId": ")[^"]*')
+if [ "$check_sg" == "" ]; then
+    sg_id=$(aws ec2 create-security-group \
+            --group-name $tag_name_prefix-sg \
+            --vpc-id $vpc_id \
+            --tag-specifications "ResourceType=security-group,Tags=[{Key=Name,Value=$tag_name_prefix-sg}]" \
+            --description 'from cli' --query 'GroupId' --output text)
+    echo $sg_id
+
+    if [ "$sg_id" == "" ]; then
+        echo "Error in creating the security group"
+        exit 1
+    fi
+
+    echo "security group created."
+
+else
+    echo "security group already exist"
+    sg_id=$check_sg
+    echo "$sg_id"
+fi
+
+# ----------------------------------------------------------------------------
+
+# revoke all rules and add ssh rule
+ip_permissions=$(aws ec2 describe-security-groups --region $region --filters Name=tag:Name,Values=$tag_name_prefix-sg --query "SecurityGroups[].IpPermissions[]")
+if [ "$ip_permissions" != "[]" ]; then
+
+    revoke_rules=$(aws ec2 revoke-security-group-ingress --group-id "$sg_id" --ip-permissions "$ip_permissions" | grep -oP '(?<="Return": )[^ }]*')
+    if [ "$revoke_rules" != "true" ]; then
+        echo "rules revoking failed"
+        exit 1
+    fi
+    echo "rules revoking succeeded"
+
+else
+    echo "No rules found"
+fi
+
+# add ssh rule
+rule_result=$(aws ec2 authorize-security-group-ingress --group-id $sg_id --protocol tcp --port 22 --cidr "$sg_ssh_rule_cidr" | grep -oP '(?<="Return": )[^,]*')
+if [ "$rule_result" != "true" ]; then
+    echo "ssh rule creation failed"
+    exit 1
+fi
+echo "ssh rule created"
+
+# ----------------------------------------------------------------------------
+
+# create ec2 instance
+check_ec2=$(aws ec2 describe-instances \
+            --region $region \
+            --filters Name=tag:Name,Values=$tag_name_prefix-ec2 Name=instance-state-name,Values=pending,running | \
+            grep -oP '(?<="InstanceId": ")[^"]*')
+if [ "$check_ec2" == "" ]; then
+
+    ec2=$(aws ec2 run-instances \
+            --image-id $ec2_ami_id \
+            --count 1 \
+            --instance-type t3.micro \
+            --key-name $key_pair_name \
+            --region $region \
+            --security-group-ids "$sg_id" \
+            --subnet-id $sub1_id)
+
+    ec2_id=$(echo $ec2 | grep -oP '(?<="InstanceId": ")[^"]*')
+    echo $ec2_id
+
+    if [ "$ec2_id" == "" ]; then
+        echo "Error in creating ec2 instance"
+        exit 1
+    fi
+
+    echo "ec2 instance created."
+
+    add_tags_result=$(aws ec2 create-tags --resources $ec2_id --tags Key=Name,Value=$tag_name_prefix-ec2)
+    echo $add_tags_result
+
+else
+    echo "ec2 instance already exist"
+    ec2_id=$check_ec2
+    echo $ec2_id
+fi
+
+while :
+do
+    output=$(aws ec2 describe-instances \
+            --region $region \
+            --instance-ids $ec2_id \
+            --query "Reservations[].Instances[].[State.Name, InstanceId, PublicIpAddress]" \
+            --output text)
+
+    if [[ "${output}" == running* ]] ; then 
+        ec2_pub_ip=$(cut -d $'\t' -f3- <<<"${output}")
+        echo $ec2_pub_ip
+        break
+    fi
+
+    sleep 10;
+done

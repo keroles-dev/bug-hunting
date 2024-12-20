@@ -53,7 +53,31 @@ else
 fi
 
 # delete key
-rm -rf ./infra/$tag_name_prefix-cli-key.pem
+rm -rf ./$tag_name_prefix-cli-key.pem
+
+# ----------------------------------------------------------------------------
+
+# revoke all rules and add ssh rule
+ip_permissions=$(aws ec2 describe-security-groups --region $region --filters Name=tag:Name,Values=$tag_name_prefix-sg --query "SecurityGroups[].IpPermissions[]")
+if [ "$ip_permissions" != "[]" ]; then
+    
+    sg_id=$(aws ec2 describe-security-groups --region $region --filters Name=tag:Name,Values=$tag_name_prefix-sg | grep -oP '(?<="GroupId": ")[^"]*')
+    if [ "$sg_id" != "" ]; then
+        revoke_rules=$(aws ec2 revoke-security-group-ingress --group-id "$sg_id" --ip-permissions "$ip_permissions" | grep -oP '(?<="Return": )[^ }]*')
+        if [ "$revoke_rules" != "true" ]; then
+            echo "rules revoking failed"
+            exit 1
+        fi
+        echo "rules revoking succeeded"
+
+    else
+        echo "No security groups found"
+    fi
+ 
+    
+else
+    echo "No rules found"
+fi
 
 # ----------------------------------------------------------------------------
 

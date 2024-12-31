@@ -160,7 +160,7 @@ if [ "$check_key_pair" == "" ]; then
     --key-name $tag_name_prefix-cli-key \
     --tag-specifications "ResourceType=key-pair,Tags=[{Key=Name,Value=$tag_name_prefix-cli-key}]" \
     --query 'KeyMaterial' \
-    --output text > ./$tag_name_prefix-cli-key.pem
+    --output text > ~/hunt/infra/$tag_name_prefix-cli-key.pem
     
     key_pair_name=$(aws ec2 describe-key-pairs --region $region --filters Name=key-name,Values=$tag_name_prefix-cli-key | grep -oP '(?<="KeyName": ")[^"]*')
     echo $key_pair_name
@@ -179,7 +179,7 @@ else
 fi
 
 # change key permission
-chmod 400 ./$tag_name_prefix-cli-key.pem
+chmod 400 ~/hunt/infra/$tag_name_prefix-cli-key.pem
 
 # ----------------------------------------------------------------------------
 
@@ -248,7 +248,7 @@ if [ "$check_ec2" == "" ]; then
             --region $region \
             --security-group-ids "$sg_id" \
             --subnet-id $sub1_id \
-            --user-data file://init_script.sh)
+            --user-data file://$HOME/hunt/infra/init_script.sh)
 
     ec2_id=$(echo $ec2 | grep -oP '(?<="InstanceId": ")[^"]*')
     echo $ec2_id

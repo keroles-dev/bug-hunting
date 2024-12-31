@@ -53,7 +53,7 @@ else
 fi
 
 # delete key
-rm -rf ./$tag_name_prefix-cli-key.pem
+rm -rf ~/hunt/infra/$tag_name_prefix-cli-key.pem
 
 # ----------------------------------------------------------------------------
 

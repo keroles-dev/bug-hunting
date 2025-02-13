@@ -1,0 +1,2 @@
+# lines dos not contain ex
+/^((?!ex).)*$/s

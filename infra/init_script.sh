@@ -6,6 +6,10 @@ echo '* libraries/restart-without-asking boolean true' | sudo debconf-set-select
 
 sudo apt-get -y update
 
+sudo apt-get -y install wordlists
+
+sudo apt-get -y install htop
+
 sudo apt-get -y install htop
 
 sudo apt-get -y install nmap

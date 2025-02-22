@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /home/kali
+cd ~
 
 echo '* libraries/restart-without-asking boolean true' | sudo debconf-set-selections
 
@@ -8,7 +8,7 @@ sudo apt-get -y update
 
 sudo apt-get -y install wordlists
 
-sudo apt-get -y install htop
+sudo apt-get -y install dig
 
 sudo apt-get -y install htop
 
@@ -34,13 +34,6 @@ wget https://github.com/Stratus-Security/Subdominator/releases/latest/download/S
 
 chmod 755 Subdominator
 
-echo alias c=clear >> ./.bashrc
-echo alias c=clear >> ./.zshrc
-echo alias mpip=\"curl https://checkip.amazonaws.com\" >> ./.bashrc
-echo alias mpip=\"curl https://checkip.amazonaws.com\" >> ./.zshrc
-echo alias l=\"ls -lah\" >> ./.bashrc
-echo alias l=\"ls -lah\" >> ./.zshrc
-
 wget "https://raw.githubusercontent.com/ifconfig-me/Directory-Traversal-Payloads/refs/heads/main/payloads.txt" -O ./directory_traversal_payloads
 
 git clone https://github.com/iamj0ker/bypass-403
@@ -49,3 +42,11 @@ chmod +x bypass-403.sh
 sudo apt-get -y install figlet
 sudo apt-get -y install jq
 cd ..
+
+echo alias c=clear >> ./.bashrc
+echo alias c=clear >> ./.zshrc
+echo alias mpip=\"curl https://checkip.amazonaws.com\" >> ./.bashrc
+echo alias mpip=\"curl https://checkip.amazonaws.com\" >> ./.zshrc
+echo alias l=\"ls -lah\" >> ./.bashrc
+echo alias l=\"ls -lah\" >> ./.zshrc
+

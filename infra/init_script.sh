@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd ~
+cd /home/kali
 
 echo '* libraries/restart-without-asking boolean true' | sudo debconf-set-selections
 

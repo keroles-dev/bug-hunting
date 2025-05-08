@@ -1,5 +1,7 @@
 #!/bin/bash
 
+sudo su kali
+
 cd /home/kali
 
 echo '* libraries/restart-without-asking boolean true' | sudo debconf-set-selections
@@ -30,6 +32,8 @@ sudo apt-get -y install dirsearch
 
 sudo apt-get -y --force-yes install metasploit-framework
 
+sudo apt-get -y install golang
+
 wget https://github.com/Stratus-Security/Subdominator/releases/latest/download/Subdominator
 
 chmod 755 Subdominator
@@ -42,6 +46,19 @@ chmod +x bypass-403.sh
 sudo apt-get -y install figlet
 sudo apt-get -y install jq
 cd ..
+
+echo export GOROOT=\"/usr/lib/go\" >> ./.bashrc
+echo export GOROOT=\"/usr/lib/go\" >> ./.zshrc
+
+echo export GOPATH=\"\$HOME/go\" >> ./.bashrc
+echo export GOPATH=\"\$HOME/go\" >> ./.zshrc
+
+echo export PATH=\"\$GOPATH/bin:\$GOROOT/bin:\$PATH\" >> ./.bashrc
+echo export PATH=\"\$GOPATH/bin:\$GOROOT/bin:\$PATH\" >> ./.zshrc
+
+source .bashrc
+
+go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
 
 echo alias c=clear >> ./.bashrc
 echo alias c=clear >> ./.zshrc

@@ -28,7 +28,7 @@ if [ -z "$in_file" ]; then
 fi
 
 if [ ! -r "$in_file" ]; then
-  echo "File '$file' is not readable."
+  echo "File '$in_file' is not readable."
   exit 1
 fi
 
@@ -40,7 +40,7 @@ check_url_response() {
 is_url_responsive() {
   url="$1"
   status_code=$(check_url_response "$url")
-  echo $status_code
+  echo "$status_code"
 }
 
 responsive_list=()

@@ -1,0 +1,25 @@
+#!/bin/bash
+
+region=eu-north-1 # stockholm
+tag_name_prefix=hunt
+
+# delete ec2 instance
+ec2_id=$(aws ec2 describe-instances \
+            --region $region \
+            --filters Name=tag:Name,Values=$tag_name_prefix-ec2 Name=instance-state-name,Values=pending,running | \
+            grep -oP '(?<="InstanceId": ")[^"]*')
+
+if [ "$ec2_id" != "" ]; then
+
+    restart_res=$(aws ec2 reboot-instances \
+                --instance-ids "$ec2_id" \
+                --output text)
+
+    echo "$restart_res"
+
+    echo "ec2 instance rebooted."
+
+else
+    echo "ec2 instance not exist"
+fi
+

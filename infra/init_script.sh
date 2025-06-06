@@ -4,7 +4,11 @@ sudo su kali
 
 cd /home/kali
 
-echo '* libraries/restart-without-asking boolean true' | sudo debconf-set-selections
+echo '* libraries/restart-without-asking boolean true' | sudo debconf-set-selectionis
+
+sudo -E wget https://archive.kali.org/archive-keyring.gpg -O /usr/share/keyrings/kali-archive-keyring.gpg
+
+sudo apt update
 
 sudo apt-get -y update
 
